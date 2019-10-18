@@ -1,0 +1,287 @@
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<title>Lighting</title>
+<canvas id="webglcanvas" width="500" height="500"></canvas>
+
+<script>
+
+var vertexShaderSource =
+
+       `
+        attribute vec3 a_coords;
+        attribute vec3 a_colors;
+        attribute vec3 a_normal;
+
+          uniform mat4 u_T;
+	      uniform mat4 u_Rx;
+	      uniform mat4 u_Ry;
+		  
+		  uniform mat4 u_Basis;
+	      uniform mat4 u_Eye;
+	      
+		  uniform mat4 u_Pers;
+
+        varying vec3 v_normal;
+        varying vec3 v_coords;
+        varying vec3 v_color;
+
+        void main() {
+
+    				mat4 M = u_T*u_Ry*u_Rx;
+					mat4 V = u_Basis*u_Eye;
+    				mat4 P = u_Pers;
+    				mat4 MVP = P*V*M;
+
+		        gl_Position = MVP*vec4(a_coords, 1.0);
+                vec3 eyeNorm = mat3(V*M) * a_normal;
+                v_normal = normalize(eyeNorm);
+		        v_color = a_colors;
+                v_coords = a_coords;
+        }`;
+
+
+var fragmentShaderSource =
+
+       `precision mediump float;
+        uniform vec3 u_LightColor;
+        uniform vec3 u_LightPosition;
+        uniform vec3 u_AmbientLight;
+
+        varying vec3 v_normal;
+        varying vec3 v_coords;
+        varying vec3 v_color;
+
+        void main() {
+          vec3 normal = normalize(v_normal);
+          vec3 lightDirection = normalize(u_LightPosition - v_coords);
+          float nDotL = max(dot(lightDirection, normal), 0.0);
+          vec3 diffuse = u_LightColor * v_color * nDotL;
+          vec3 ambient = u_AmbientLight * v_color;
+
+          gl_FragColor = vec4(diffuse + ambient, 1.0);
+        }`;
+
+var gl;
+var a_coords_location;
+var a_coords_buffer;
+var a_colors_location;
+var a_colors_buffer;
+var a_normal_location;
+var a_normal_buffer;
+
+
+var bufferInd;
+
+var u_matrix_trans_location;
+var u_matrix_rotateX_location;
+var u_matrix_rotateY_location;
+var u_matrix_basis_location;
+var u_matrix_eye_location;
+var u_matrix_perspective_location;
+
+
+var u_LightColor_location;
+var u_LightPosition_location;
+var u_AmbientLight_location;
+
+var thetaX = 35;
+var thetaY = 20;
+
+function draw() {
+
+    gl.clearColor(0.0,0.0,0.0,1);
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    var coords = new Float32Array( [
+      2.0, 2.0, 2.0,  -2.0, 2.0, 2.0,  -2.0,-2.0, 2.0,   2.0,-2.0, 2.0, // v0-v1-v2-v3 front
+      2.0, 2.0, 2.0,   2.0,-2.0, 2.0,   2.0,-2.0,-2.0,   2.0, 2.0,-2.0, // v0-v3-v4-v5 right
+      2.0, 2.0, 2.0,   2.0, 2.0,-2.0,  -2.0, 2.0,-2.0,  -2.0, 2.0, 2.0, // v0-v5-v6-v1 up
+     -2.0, 2.0, 2.0,  -2.0, 2.0,-2.0,  -2.0,-2.0,-2.0,  -2.0,-2.0, 2.0, // v1-v6-v7-v2 left
+     -2.0,-2.0,-2.0,   2.0,-2.0,-2.0,   2.0,-2.0, 2.0,  -2.0,-2.0, 2.0, // v7-v4-v3-v2 down
+      2.0,-2.0,-2.0,  -2.0,-2.0,-2.0,  -2.0, 2.0,-2.0,   2.0, 2.0,-2.0  // v4-v7-v6-v5 back
+    ] );
+
+    var colors = new Float32Array( 	[
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0.5, 1, 0,     // v0-v1-v2-v3 front
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0.5, 1, 0,     // v0-v3-v4-v5 right
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0.5, 1, 0,     // v0-v5-v6-v1 up
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0.5, 1, 0,     // v1-v6-v7-v2 left
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0.5, 1, 0,     // v7-v4-v3-v2 down
+      0.5, 1, 0,   0.5, 1, 0,   0.5, 1, 0,  0,5, 1, 0　    // v4-v7-v6-v5 back
+    ] );
+
+    var normals = new Float32Array([
+      0.0, 0.0, 1.0,   0.0, 0.0, 1.0,   0.0, 0.0, 1.0,   0.0, 0.0, 1.0,  // v0-v1-v2-v3 front
+      1.0, 0.0, 0.0,   1.0, 0.0, 0.0,   1.0, 0.0, 0.0,   1.0, 0.0, 0.0,  // v0-v3-v4-v5 right
+      0.0, 1.0, 0.0,   0.0, 1.0, 0.0,   0.0, 1.0, 0.0,   0.0, 1.0, 0.0,  // v0-v5-v6-v1 up
+     -1.0, 0.0, 0.0,  -1.0, 0.0, 0.0,  -1.0, 0.0, 0.0,  -1.0, 0.0, 0.0,  // v1-v6-v7-v2 left
+      0.0,-1.0, 0.0,   0.0,-1.0, 0.0,   0.0,-1.0, 0.0,   0.0,-1.0, 0.0,  // v7-v4-v3-v2 down
+      0.0, 0.0,-1.0,   0.0, 0.0,-1.0,   0.0, 0.0,-1.0,   0.0, 0.0,-1.0   // v4-v7-v6-v5 back
+
+
+                  ]);
+
+
+
+
+    var indices = new Uint8Array([
+      0, 1, 2,   0, 2, 3,    // front
+      4, 5, 6,   4, 6, 7,    // right
+      8, 9,10,   8,10,11,    // up
+     12,13,14,  12,14,15,    // left
+     16,17,18,  16,18,19,    // down
+     20,21,22,  20,22,23     // back
+									]);
+
+    var tx = 0.0; var ty = 0.0; var tz = -20.0;
+    var transMat = new Float32Array( [1.0, 0.0, 0.0, 0.0,
+                                      0.0, 1.0, 0.0, 0.0,
+                                      0.0, 0.0, 1.0, 0.0,
+                                      tx,  ty, tz, 1.0] );
+
+    var rad = thetaX*Math.PI/180;
+    var rotateMatX = new Float32Array( [1.0,  0.0,            0.0,            0.0,
+                                      	0.0,  Math.cos(rad),  Math.sin(rad),  0.0,
+                                     	0.0,  -Math.sin(rad),  Math.cos(rad),  0.0,
+                                      	0.0,  0.0,            0.0,            1.0] );
+
+
+
+    var rad = thetaY*Math.PI/180;
+    var rotateMatY = new Float32Array( [Math.cos(rad),  0.0,  -Math.sin(rad),  0.0,
+                                      	0.0,            1.0,  0.0,            0.0,
+                                        Math.sin(rad),  0.0,  Math.cos(rad),  0.0,
+                                      	0.0,            0.0,  0.0,            1.0] );
+
+    var xu, xv, xw, yu, yv, yw, zu, zv, zw;
+    xu = 1; xv = 0; xw = 0;
+    yu = 0; yv = 1; yw = 0;
+    zu = 0; zv = 0; zw = 1;
+    var basisMat = new Float32Array([ xu, xv, xw, 0,
+                                      yu, yv, yw, 0,
+                                      zu, zv, zw, 0,
+                                      0,  0,  0,  1]);
+
+    var xe, ye, ze;
+    xe = 0.0; ye = 1.0; ze = 2.0;
+    var eyeMat = new Float32Array([1,   0,   0,   0,
+                                   0,   1,   0,   0,
+                                   0,   0,   1,   0,
+                                 -xe,  -ye, -ze,  1]);
+
+
+    var aspect = 1.0;
+    var fov = 45;
+    var far = 100;
+    var near = 2;
+
+    var pa = 1.0/(aspect*Math.tan((fov/2)*Math.PI/180));
+    var pb = 1.0/(Math.tan((fov/2)*Math.PI/180));
+    var pc = -(far+near) / (far-near);
+    var pd = -(2.0*far*near) / (far-near);
+
+    var persMat = new Float32Array( [pa,   0.0,  0.0,  0.0,
+                                     0.0,  pb,   0,    0.0,
+                                     0.0,  0.0,  pc,  -1.0,
+                                     0.0,  0.0,  pd,   0.0] );
+
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, a_coords_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, coords, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(a_coords_location, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_coords_location);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, a_colors_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(a_colors_location, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_colors_location);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, a_normal_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(a_normal_location, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_normal_location);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufferInd);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    gl.uniformMatrix4fv(u_matrix_trans_location, false, transMat);
+    gl.uniformMatrix4fv(u_matrix_rotateX_location, false, rotateMatX);
+    gl.uniformMatrix4fv(u_matrix_rotateY_location, false, rotateMatY);
+    gl.uniformMatrix4fv(u_matrix_basis_location, false, basisMat);
+    gl.uniformMatrix4fv(u_matrix_eye_location, false, eyeMat);
+    gl.uniformMatrix4fv(u_matrix_perspective_location, false, persMat);
+
+    gl.uniform3f(u_LightColor_location, 1.0, 1.0, 1.0);
+    gl.uniform3f(u_LightPosition_location, 2.0, 2.0, 5.0);
+    gl.uniform3f(u_AmbientLight_location, 0.2, 0.2, 0.2);
+
+    gl.drawElements(gl.TRIANGLES, 3*12, gl.UNSIGNED_BYTE, 0);
+}
+
+
+
+function createProgram(gl, vertexShaderSource, fragmentShaderSource) {
+  var vsh = gl.createShader( gl.VERTEX_SHADER );
+  gl.shaderSource( vsh, vertexShaderSource );
+  gl.compileShader( vsh );
+
+  var fsh = gl.createShader( gl.FRAGMENT_SHADER );
+  gl.shaderSource( fsh, fragmentShaderSource );
+  gl.compileShader( fsh );
+
+  var prog = gl.createProgram();
+  gl.attachShader( prog, vsh );
+  gl.attachShader( prog, fsh );
+  gl.linkProgram( prog );
+
+  return prog;
+}
+
+
+function initGL() {
+    var prog = createProgram( gl, vertexShaderSource, fragmentShaderSource );
+    gl.useProgram(prog);
+
+    a_coords_location = gl.getAttribLocation(prog, "a_coords");
+    a_coords_buffer = gl.createBuffer();
+
+    a_colors_location = gl.getAttribLocation(prog, "a_colors");
+    a_colors_buffer = gl.createBuffer();
+
+    a_normal_location = gl.getAttribLocation(prog, "a_normal");
+    a_normal_buffer = gl.createBuffer();
+
+    bufferInd = gl.createBuffer();
+
+    u_matrix_trans_location = gl.getUniformLocation(prog, "u_T");
+    u_matrix_rotateX_location = gl.getUniformLocation(prog, "u_Rx");
+    u_matrix_rotateY_location = gl.getUniformLocation(prog, "u_Ry");
+    u_matrix_basis_location = gl.getUniformLocation(prog, "u_Basis");
+    u_matrix_eye_location = gl.getUniformLocation(prog, "u_Eye");
+    u_matrix_perspective_location = gl.getUniformLocation(prog, "u_Pers");
+
+    u_LightColor_location = gl.getUniformLocation(prog, "u_LightColor");
+    u_LightPosition_location = gl.getUniformLocation(prog, "u_LightPosition");
+    u_AmbientLight_location = gl.getUniformLocation(prog, "u_AmbientLight");
+
+
+}
+
+
+function init() {
+    var canvas = document.getElementById("webglcanvas");
+    gl = canvas.getContext("webgl");
+    initGL();
+    draw();
+}
+
+init();
+
+</script>
+
+
+
+</html>

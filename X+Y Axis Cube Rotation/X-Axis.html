@@ -1,0 +1,256 @@
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<title>X-Axis</title>
+<canvas id="webglcanvas" width="500" height="500"></canvas>
+
+<script>
+
+var vertexShaderSource =
+
+       `attribute vec3 a_coords;
+        attribute vec3 a_colors;
+	      uniform mat4 u_Rx;
+	       uniform mat4 u_T;
+		    uniform mat4 u_TI;
+        varying vec3 v_color;
+
+
+        void main() {
+		    
+			    mat4 M = u_T;
+				mat4 MI = u_TI;
+		        gl_Position = MI*u_Rx*M*vec4(a_coords*.75, 1.0);
+		        v_color = a_colors;
+        }`;
+
+
+var fragmentShaderSource =
+
+       `precision mediump float;
+        varying vec3 v_color;
+        void main() {
+            gl_FragColor = vec4(v_color, 1.0);
+        }`;
+
+var gl;
+var a_coords_location;
+var a_coords_buffer;
+var a_colors_location;
+var a_colors_buffer;
+
+var bufferInd;
+
+var u_matrix_rotateX_location;
+var u_matrix_trans_location;
+var u_matrix_trans_locationI;
+
+var thetaX = 35;
+
+
+function draw() {
+
+    gl.clearColor(0.0,0.0,0.0,1);
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    var coords = new Float32Array( [  // Front face
+                                      -0.5, -0.5,  0.5,
+                                       0.5, -0.5,  0.5,
+                                       0.5,  0.5,  0.5,
+                                      -0.5,  0.5,  0.5,
+
+                                      // Back face
+                                      -0.5, -0.5, -0.5,
+                                      -0.5,  0.5, -0.5,
+                                       0.5,  0.5, -0.5,
+                                       0.5, -0.5, -0.5,
+
+                                      // Top face
+                                      -0.5,  0.5, -0.5,
+                                      -0.5,  0.5,  0.5,
+                                       0.5,  0.5,  0.5,
+                                       0.5,  0.5, -0.5,
+
+                                      // Bottom face
+                                      -0.5, -0.5, -0.5,
+                                       0.5, -0.5, -0.5,
+                                       0.5, -0.5,  0.5,
+                                      -0.5, -0.5,  0.5,
+
+                                      // Right face
+                                       0.5, -0.5, -0.5,
+                                       0.5,  0.5, -0.5,
+                                       0.5,  0.5,  0.5,
+                                       0.5, -0.5,  0.5,
+
+                                      // Left face
+                                      -0.5, -0.5, -0.5,
+                                      -0.5, -0.5,  0.5,
+                                      -0.5,  0.5,  0.5,
+                                      -0.5,  0.5, -0.5] );
+
+    var colors = new Float32Array( 	[1.0, 0.0, 0.0,
+									1.0, 0.0, 0.0,
+									1.0, 0.0, 0.0,
+									1.0, 0.0, 0.0,
+
+									0.0, 1.0, 0.0,
+									0.0, 1.0, 0.0,
+									0.0, 1.0, 0.0,
+									0.0, 1.0, 0.0,
+
+									0.0, 0.0, 1.0,
+									0.0, 0.0, 1.0,
+									0.0, 0.0, 1.0,
+									0.0, 0.0, 1.0,
+
+									1.0, 1.0, 0.0,
+									1.0, 1.0, 0.0,
+									1.0, 1.0, 0.0,
+									1.0, 1.0, 0.0,
+
+									0.0, 1.0, 1.0,
+									0.0, 1.0, 1.0,
+									0.0, 1.0, 1.0,
+									0.0, 1.0, 1.0,
+
+									1.0, 0.0, 1.0,
+									1.0, 0.0, 1.0,
+									1.0, 0.0, 1.0,
+									1.0, 0.0, 1.0] );
+
+	var indices = new Uint8Array([
+                                    0, 1, 2,      0, 2, 3,    // Front face
+                                    4, 5, 6,      4, 6, 7,    // Back face
+                                    8, 9, 10,     8, 10, 11,  // Top face
+                                    12, 13, 14,   12, 14, 15, // Bottom face
+                                    16, 17, 18,   16, 18, 19, // Right face
+                                    20, 21, 22,   20, 22, 23  // Left face
+									]);
+
+
+
+    var rad = thetaX*Math.PI/180;
+    var rotateMatX = new Float32Array( [1.0,  0.0,            0.0,            0.0,
+                                      	0.0,  Math.cos(rad),  Math.sin(rad),  0.0,
+                                     	  0.0,  -Math.sin(rad),  Math.cos(rad),  0.0,
+                                      	0.0,  0.0,            0.0,            1.0] );
+
+    var tx = 0.5; var ty = 0.5; var tz = 0;
+    var transMat = new Float32Array( [1.0, 0.0, 0.0, 0.0,
+                                      0.0, 1.0, 0.0, 0.0,
+                                      0.0, 0.0, 1.0, 0.0,
+                                      tx,  ty, tz, 1.0] );
+									  
+	var txi = 0.5; var tyi = 0.5; var tzi = 0;
+    var transMatI = new Float32Array( [1.0, 0.0, 0.0, 0.0,
+                                      0.0, 1.0, 0.0, 0.0,
+                                      0.0, 0.0, 1.0, 0.0,
+                                      -txi,  -tyi, -tzi, 1.0] );
+
+   
+
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, a_coords_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, coords, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(a_coords_location, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_coords_location);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, a_colors_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(a_colors_location, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_colors_location);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufferInd);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    gl.uniformMatrix4fv(u_matrix_rotateX_location, false, rotateMatX);
+	gl.uniformMatrix4fv(u_matrix_trans_location, false, transMat);
+	gl.uniformMatrix4fv(u_matrix_trans_locationI, false, transMatI);
+   
+
+    gl.drawElements(gl.TRIANGLES, 3*12, gl.UNSIGNED_BYTE, 0);
+}
+
+
+
+function createProgram(gl, vertexShaderSource, fragmentShaderSource) {
+  var vsh = gl.createShader( gl.VERTEX_SHADER );
+  gl.shaderSource( vsh, vertexShaderSource );
+  gl.compileShader( vsh );
+
+  var fsh = gl.createShader( gl.FRAGMENT_SHADER );
+  gl.shaderSource( fsh, fragmentShaderSource );
+  gl.compileShader( fsh );
+
+  var prog = gl.createProgram();
+  gl.attachShader( prog, vsh );
+  gl.attachShader( prog, fsh );
+  gl.linkProgram( prog );
+
+  return prog;
+}
+
+
+function initGL() {
+    var prog = createProgram( gl, vertexShaderSource, fragmentShaderSource );
+    gl.useProgram(prog);
+
+    a_coords_location = gl.getAttribLocation(prog, "a_coords");
+    a_coords_buffer = gl.createBuffer();
+
+    a_colors_location = gl.getAttribLocation(prog, "a_colors");
+    a_colors_buffer = gl.createBuffer();
+
+  
+    bufferInd = gl.createBuffer();
+
+    u_matrix_rotateX_location = gl.getUniformLocation(prog, "u_Rx");
+	u_matrix_trans_location = gl.getUniformLocation(prog, "u_T");
+	u_matrix_trans_locationI = gl.getUniformLocation(prog, "u_TI");
+    
+
+}
+
+
+function click()
+{
+   gl.clearColor(0.0,0.0,0.0,1);  // glClear will fill the canvas with a new color
+   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+   thetaX = thetaX + 10.0;
+
+	if (thetaX >= 360) {
+	  thetaX = 0.0;
+	}
+
+   var rad = thetaX*Math.PI/180;
+
+   var rotateMatX = new Float32Array( [Math.cos(rad),  0.0,  -Math.sin(rad),  0.0,
+                                      	0.0,            1.0,  0.0,            0.0,
+                                        Math.sin(rad),  0.0,  Math.cos(rad),  0.0,
+                                      	0.0,            0.0,  0.0,            1.0] );
+
+   gl.uniformMatrix4fv(u_matrix_rotateX_location, false, rotateMatX);
+   gl.drawElements(gl.TRIANGLES, 3*12, gl.UNSIGNED_BYTE, 0);
+}
+
+function init() {
+    var canvas = document.getElementById("webglcanvas");
+    gl = canvas.getContext("webgl");
+    initGL();
+    draw();
+    canvas.onmousedown = function (ev) {
+					click();
+				       };
+}
+
+init();
+
+</script>
+
+
+
+</html>
